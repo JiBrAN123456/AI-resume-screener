@@ -14,7 +14,7 @@ from .models import Resume
 from .serializers import ResumeUploadSerializer
 import nltk
 
-# ✅ Download NLTK resources at the beginning
+# ✅ Download NLTK resources
 nltk.download("punkt")
 nltk.download("stopwords")
 
@@ -23,6 +23,7 @@ nltk.data.path.append("C:\\Users\\yunis\\AppData\\Roaming\\nltk_data")
 
 nlp = spacy.load("en_core_web_sm")
 
+# ✅ Predefined skills for fuzzy matching
 SKILL_SET = {
     "Python", "Django", "Flask", "FastAPI", "SQL", "PostgreSQL", "MongoDB", "Machine Learning",
     "Deep Learning", "Computer Vision", "NLP", "TensorFlow", "PyTorch", "AWS", "Azure", "Docker",
@@ -46,6 +47,8 @@ class ResumeUploadView(generics.CreateAPIView):
         except Exception as e:
             print(f"Error extracting PDF: {e}")
             return None
+        
+        text = text.replace("\x00", "")
         return text.strip() if text else None
 
     def extract_info(self, text):
@@ -60,8 +63,8 @@ class ResumeUploadView(generics.CreateAPIView):
         if email_match:
             email = email_match.group(0)
 
-        # ✅ Extract Phone Number using Regex
-        phone_match = re.search(r"\b\d{10}\b", text)
+        # ✅ Extract Phone Number using Regex (supports international numbers)
+        phone_match = re.search(r"\+?\d{1,3}[-.\s]?\(?\d{2,5}\)?[-.\s]?\d{2,5}[-.\s]?\d{2,5}", text)
         if phone_match:
             phone = phone_match.group(0)
 
@@ -86,7 +89,7 @@ class ResumeUploadView(generics.CreateAPIView):
             "name": name,
             "email": email,
             "phone": phone,
-            "skills": ", ".join(extracted_skills),
+            "skills": ", ".join(set(extracted_skills)),
             "experience": "Experience data (To be improved)",
             "education": "Education data (To be improved)"
         }        
@@ -132,17 +135,24 @@ class ResumeRankView(APIView):
     def rank_resume_against_job(self, resume_text, job_description):
         """Rank resume relevance to job description."""
         if not resume_text or not job_description:
-           return 0
+            return 0  # ✅ Return 0 if any text is empty
         
+        # ✅ Tokenize and convert to lowercase
         resume_tokens = set(word_tokenize(resume_text.lower()))
         job_tokens = set(word_tokenize(job_description.lower()))
 
+        # ✅ Remove stopwords
         stop_words = set(stopwords.words("english"))
         resume_tokens = {word for word in resume_tokens if word not in stop_words}
         job_tokens = {word for word in job_tokens if word not in stop_words}
 
+        # ✅ Avoid division by zero
+        if not job_tokens:
+            return 0  
+
+        # ✅ Calculate relevance score
         matching_keywords = resume_tokens.intersection(job_tokens)
-        score = len(matching_keywords) / len(job_tokens) * 100
+        score = (len(matching_keywords) / len(job_tokens)) * 100  
 
         return round(score, 2)
 
@@ -166,7 +176,7 @@ class ResumeRankView(APIView):
                 "score": score
             })
 
-        # ✅ Move sorting **outside** the loop
+        # ✅ Sort resumes by score **outside** the loop
         ranked_resumes = sorted(ranked_resumes, key=lambda x: x["score"], reverse=True)
 
         return Response({"ranked_resumes": ranked_resumes}, status=200)
